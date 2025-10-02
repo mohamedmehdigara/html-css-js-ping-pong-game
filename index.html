@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arcade Pong</title>
+    <style>
+        /* General Setup */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #0d0d0d;
+            color: #c0f0c0; /* Neon green text */
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        /* Game Container */
+        .game-container {
+            border: 2px solid #00ff00; /* Neon border */
+            box-shadow: 0 0 15px #00ff00, inset 0 0 10px #00ff00;
+            border-radius: 10px;
+            padding: 10px;
+            background-color: #000000;
+            max-width: 90vw;
+            width: 820px; /* Canvas width + padding */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Scoreboard */
+        #scoreboard {
+            font-size: 3rem;
+            font-weight: bold;
+            letter-spacing: 5px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 8px #00ff00;
+            color: #00ff00;
+        }
+
+        /* Canvas (Game Area) */
+        #gameCanvas {
+            background-color: #000000;
+            display: block;
+            border-radius: 5px;
+        }
+
+        /* Message Box (For Start/End Game) */
+        #messageBox {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .message-content {
+            background: #111;
+            border: 2px solid #ff00ff; /* Neon magenta border */
+            box-shadow: 0 0 20px #ff00ff;
+            padding: 30px 40px;
+            border-radius: 10px;
+        }
+
+        .message-content h2 {
+            font-size: 2.5rem;
+            color: #ff00ff;
+            text-shadow: 0 0 5px #ff00ff;
+            margin-top: 0;
+        }
+
+        .message-content p {
+            font-size: 1.2rem;
+            color: #c0f0c0;
+            margin-bottom: 20px;
+        }
+
+        #startButton {
+            background: #00ff00;
+            color: #000000;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 0 #00aa00;
+        }
+
+        #startButton:hover {
+            background: #00dd00;
+            box-shadow: 0 2px 0 #00aa00;
+            transform: translateY(2px);
+        }
+
+        /* Mobile Adjustments */
+        @media (max-width: 600px) {
+            #scoreboard {
+                font-size: 2rem;
+            }
+            .message-content h2 {
+                font-size: 1.8rem;
+            }
+            .message-content p {
+                font-size: 1rem;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="game-container">
+        <div id="scoreboard">0 - 0</div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+
+    <!-- Message Overlay -->
+    <div id="messageBox">
+        <div class="message-content">
+            <h2 id="messageHeader">Welcome to Arcade Pong!</h2>
+            <p id="messageBody">
+                Use your **mouse or touch** to move the left paddle (Player 1). <br>
+                First to 5 points wins!
+            </p>
+            <button id="startButton">Start Game</button>
+        </div>
+    </div>
+
+    <script>
+        // Game Constants
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 600;
+        const PADDLE_WIDTH = 10;
+        const PADDLE_HEIGHT = 100;
+        const BALL_SIZE = 10;
+        const AI_SPEED = 6; // How fast the AI paddle moves
+        const MAX_SCORE = 5;
+        const INITIAL_BALL_SPEED = 7;
+
+        // Canvas Setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreboard = document.getElementById('scoreboard');
+        const messageBox = document.getElementById('messageBox');
+        const messageHeader = document.getElementById('messageHeader');
+        const messageBody = document.getElementById('messageBody');
+        const startButton = document.getElementById('startButton');
+
+        let animationFrameId = null;
+        let isGameRunning = false;
+        let playerY = (CANVAS_HEIGHT - PADDLE_HEIGHT) / 2;
+        let aiY = (CANVAS_HEIGHT - PADDLE_HEIGHT) / 2;
+        let scorePlayer = 0;
+        let scoreAI = 0;
+
+        // Ball State
+        let ballX, ballY, ballSpeedX, ballSpeedY, ballSpeedMagnitude;
+
+        // --- Utility Functions ---
+
+        /**
+         * Resets the ball to the center with a random initial direction.
+         * The magnitude of speed remains constant.
+         * @param {number} direction - 1 for serving towards AI, -1 for serving towards player.
+         */
+        function resetBall(direction) {
+            ballX = CANVAS_WIDTH / 2;
+            ballY = CANVAS_HEIGHT / 2;
+            ballSpeedMagnitude = INITIAL_BALL_SPEED;
+
+            // Generate a random angle, but avoid very flat angles (too easy)
+            // Angle between -45 and 45 degrees, or 135 and 225 degrees
+            let angle = Math.random() * (Math.PI / 2) - (Math.PI / 4); // -45deg to +45deg
+
+            // Determine X direction based on who just scored
+            if (direction === -1) { // Serve towards Player (left)
+                angle += Math.PI;
+            }
+
+            ballSpeedX = Math.cos(angle) * ballSpeedMagnitude;
+            ballSpeedY = Math.sin(angle) * ballSpeedMagnitude;
+        }
+
+        // --- Drawing Functions ---
+
+        /**
+         * Clears the canvas and draws the background elements.
+         */
+        function drawBackground() {
+            // Background is black (set by CSS, but good practice to clear)
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Draw the center net
+            ctx.strokeStyle = '#006600'; // Darker neon green for net
+            ctx.lineWidth = 4;
+            ctx.setLineDash([15, 10]); // Dashed line
+            ctx.beginPath();
+            ctx.moveTo(CANVAS_WIDTH / 2, 0);
+            ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT);
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset line dash
+        }
+
+        /**
+         * Draws a paddle.
+         * @param {number} x - X coordinate of the top-left corner.
+         * @param {number} y - Y coordinate of the top-left corner.
+         */
+        function drawPaddle(x, y) {
+            ctx.fillStyle = '#ff00ff'; // Neon magenta
+            ctx.shadowColor = '#ff00ff';
+            ctx.shadowBlur = 10;
+            ctx.fillRect(x, y, PADDLE_WIDTH, PADDLE_HEIGHT);
+            ctx.shadowBlur = 0;
+        }
+
+        /**
+         * Draws the ball.
+         */
+        function drawBall() {
+            ctx.fillStyle = '#00ff00'; // Neon green
+            ctx.shadowColor = '#00ff00';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, BALL_SIZE / 2, 0, Math.PI * 2, true);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // --- Game Logic ---
+
+        /**
+         * Updates the AI paddle position to track the ball.
+         */
+        function moveAI() {
+            const aiCenter = aiY + PADDLE_HEIGHT / 2;
+            const diff = ballY - aiCenter;
+
+            // Simple movement: move towards the ball's Y center
+            if (diff > 0) {
+                aiY = Math.min(aiY + AI_SPEED, CANVAS_HEIGHT - PADDLE_HEIGHT);
+            } else if (diff < 0) {
+                aiY = Math.max(aiY - AI_SPEED, 0);
+            }
+        }
+
+        /**
+         * Handles collisions and scoring.
+         */
+        function update() {
+            // 1. Move Ball
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+
+            // 2. Move AI
+            moveAI();
+
+            // 3. Wall Collision (Top/Bottom)
+            if (ballY - BALL_SIZE / 2 < 0 || ballY + BALL_SIZE / 2 > CANVAS_HEIGHT) {
+                ballSpeedY = -ballSpeedY; // Reverse Y direction
+            }
+
+            // 4. Player Paddle Collision (Left side)
+            if (ballSpeedX < 0) { // Ball moving left
+                if (
+                    ballX - BALL_SIZE / 2 < PADDLE_WIDTH && // Ball reaches paddle X position
+                    ballY > playerY && // Ball is below paddle top
+                    ballY < playerY + PADDLE_HEIGHT // Ball is above paddle bottom
+                ) {
+                    ballSpeedX = -ballSpeedX; // Reverse X direction
+
+                    // Calculate where the ball hit relative to the paddle center (-0.5 to 0.5)
+                    const hitPoint = (ballY - (playerY + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
+                    
+                    // Adjust Y speed based on hit point, increasing angle up to 45 degrees (PI/4)
+                    const angle = hitPoint * (Math.PI / 4);
+                    ballSpeedMagnitude = Math.min(ballSpeedMagnitude + 0.5, 20); // Increase speed slightly
+                    
+                    ballSpeedX = Math.cos(angle) * ballSpeedMagnitude;
+                    ballSpeedY = Math.sin(angle) * ballSpeedMagnitude;
+                }
+            }
+
+            // 5. AI Paddle Collision (Right side)
+            if (ballSpeedX > 0) { // Ball moving right
+                if (
+                    ballX + BALL_SIZE / 2 > CANVAS_WIDTH - PADDLE_WIDTH && // Ball reaches paddle X position
+                    ballY > aiY && // Ball is below paddle top
+                    ballY < aiY + PADDLE_HEIGHT // Ball is above paddle bottom
+                ) {
+                    ballSpeedX = -ballSpeedX; // Reverse X direction
+
+                    // Calculate where the ball hit relative to the paddle center (-0.5 to 0.5)
+                    const hitPoint = (ballY - (aiY + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
+                    
+                    // Adjust Y speed based on hit point, increasing angle up to 45 degrees (PI/4)
+                    const angle = hitPoint * (Math.PI / 4);
+                    ballSpeedMagnitude = Math.min(ballSpeedMagnitude + 0.5, 20); // Increase speed slightly
+
+                    // Use the reflected angle and magnitude
+                    ballSpeedX = -Math.cos(angle) * ballSpeedMagnitude; // Ensure X is moving left
+                    ballSpeedY = Math.sin(angle) * ballSpeedMagnitude;
+                }
+            }
+
+            // 6. Scoring (Left Wall: AI scores)
+            if (ballX < 0) {
+                scoreAI++;
+                scoreboard.textContent = `${scorePlayer} - ${scoreAI}`;
+                if (scoreAI >= MAX_SCORE) {
+                    endGame("AI Wins!");
+                } else {
+                    resetBall(1); // Serve towards AI
+                }
+            }
+
+            // 7. Scoring (Right Wall: Player scores)
+            if (ballX > CANVAS_WIDTH) {
+                scorePlayer++;
+                scoreboard.textContent = `${scorePlayer} - ${scoreAI}`;
+                if (scorePlayer >= MAX_SCORE) {
+                    endGame("Player Wins!");
+                } else {
+                    resetBall(-1); // Serve towards Player
+                }
+            }
+        }
+
+        // --- Game Loop and Control ---
+
+        /**
+         * The main game loop function.
+         */
+        function gameLoop() {
+            if (!isGameRunning) {
+                cancelAnimationFrame(animationFrameId);
+                return;
+            }
+
+            // 1. Logic Update
+            update();
+
+            // 2. Drawing
+            drawBackground();
+            drawPaddle(0, playerY);
+            drawPaddle(CANVAS_WIDTH - PADDLE_WIDTH, aiY);
+            drawBall();
+
+            // 3. Next Frame
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * Initializes and starts the game.
+         */
+        function startGame() {
+            scorePlayer = 0;
+            scoreAI = 0;
+            scoreboard.textContent = `${scorePlayer} - ${scoreAI}`;
+            messageBox.style.display = 'none';
+            
+            // Randomly determine initial serve direction (-1 for player, 1 for AI)
+            resetBall(Math.random() < 0.5 ? -1 : 1);
+            
+            isGameRunning = true;
+            gameLoop();
+        }
+
+        /**
+         * Ends the game and displays the winner.
+         * @param {string} winnerMessage - The message to display (e.g., "Player Wins!").
+         */
+        function endGame(winnerMessage) {
+            isGameRunning = false;
+            cancelAnimationFrame(animationFrameId);
+
+            messageHeader.textContent = winnerMessage;
+            messageBody.textContent = `Final Score: ${scorePlayer} - ${scoreAI}. Click below to play again.`;
+            startButton.textContent = 'Play Again';
+            messageBox.style.display = 'flex';
+        }
+
+
+        // --- Event Listeners ---
+
+        /**
+         * Moves the player paddle based on mouse/touch Y position.
+         */
+        function handleInput(event) {
+            if (!isGameRunning) return;
+
+            let clientY;
+            if (event.touches) {
+                // For touch events
+                clientY = event.touches[0].clientY;
+            } else {
+                // For mouse events
+                clientY = event.clientY;
+            }
+
+            // Get the bounding box of the canvas to calculate relative position
+            const rect = canvas.getBoundingClientRect();
+            
+            // Calculate relative Y position within the canvas (0 to CANVAS_HEIGHT)
+            let relativeY = clientY - rect.top;
+
+            // Calculate the new Y position for the paddle center
+            let newCenterY = relativeY;
+
+            // Constrain the paddle position to stay within the canvas bounds
+            let newPaddleY = newCenterY - PADDLE_HEIGHT / 2;
+
+            // Apply constraints
+            playerY = Math.max(0, Math.min(newPaddleY, CANVAS_HEIGHT - PADDLE_HEIGHT));
+        }
+
+        // Attach listeners to the canvas for better input isolation
+        canvas.addEventListener('mousemove', handleInput);
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // Prevent scrolling on touch move
+            handleInput(e);
+        }, { passive: false });
+        
+        startButton.addEventListener('click', startGame);
+
+        // Initial draw when the page loads
+        window.onload = () => {
+             // Set the initial canvas size on load
+             canvas.width = CANVAS_WIDTH;
+             canvas.height = CANVAS_HEIGHT;
+             drawBackground();
+             drawPaddle(0, playerY);
+             drawPaddle(CANVAS_WIDTH - PADDLE_WIDTH, aiY);
+        }
+    </script>
+
+</body>
+</html>
