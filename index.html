@@ -3,160 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arcade Pong</title>
-    <!-- Load Tone.js for simple sound generation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <title>Handball Court Game</title>
     <style>
-        /* General Setup */
+        /*
+        Global Styling
+        */
         body {
             display: flex;
-            flex-direction: column;
-            align-items: center;
             justify-content: center;
+            align-items: center;
             min-height: 100vh;
             margin: 0;
-            background-color: #0d0d0d;
-            color: #c0f0c0; /* Neon green text */
+            background: linear-gradient(135deg, #1e3a8a, #0c4a6e); /* Deep Blue Gradient */
             font-family: 'Inter', sans-serif;
+            color: #ffffff;
             user-select: none;
-            overflow: hidden;
-            padding: 20px;
+            overflow: hidden; /* Prevent scrolling */
         }
 
-        /* Game Container */
         .game-container {
-            border: 2px solid #00ff00; /* Neon border */
-            box-shadow: 0 0 15px #00ff00, inset 0 0 10px #00ff00;
-            border-radius: 10px;
-            padding: 10px;
-            background-color: #000000;
-            max-width: 90vw;
-            width: 820px; /* Canvas width + padding */
             display: flex;
             flex-direction: column;
             align-items: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            padding: 20px;
+            background-color: #0d1a33; /* Dark background for score/info */
+            position: relative; /* Needed for absolute positioning of overlay */
         }
 
-        /* Controls Area */
-        .controls {
+        /*
+        Canvas Styling
+        */
+        canvas {
+            display: block;
+            border: 4px solid #ffffff;
+            border-radius: 10px;
+            background-color: #22c55e; /* Vibrant Green Court */
+            touch-action: none; /* Disable default touch actions */
+            max-width: 95vw;
+            max-height: 80vh;
+        }
+
+        /*
+        Scoreboard and Info Styling
+        */
+        .scoreboard {
             display: flex;
-            flex-wrap: wrap; /* Allows wrapping on smaller screens */
-            gap: 20px;
-            margin-top: 15px;
-            align-items: center;
-            font-size: 1rem;
-            color: #00ff00;
-            text-shadow: 0 0 5px #00ff00;
-            justify-content: center;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 800px;
+            margin-bottom: 15px;
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        .player-info {
+            padding: 10px 20px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 150px;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.3s;
+        }
+
+        #score-p1 { background-color: #ef4444; } /* Red */
+        #score-p2 { background-color: #3b82f6; } /* Blue */
+        
+        .controls-info {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.9rem;
+            opacity: 0.8;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .controls-info strong {
+            color: #fcd34d;
         }
         
-        /* Control Elements Styling */
-        .control-button, .control-select {
-            background: #1a1a1a;
-            color: #00ff00;
-            border: 1px solid #00ff00;
-            padding: 8px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 0 5px #00ff00;
-            font-weight: bold;
-        }
-
-        .control-button:hover, .control-select:hover {
-            background: #00ff00;
-            color: #000000;
-            box-shadow: 0 0 10px #00ff00;
-        }
-
-        /* Scoreboard */
-        #scoreboard {
-            font-size: 3rem;
-            font-weight: bold;
-            letter-spacing: 5px;
-            margin-bottom: 10px;
-            text-shadow: 0 0 8px #00ff00;
-            color: #00ff00;
-        }
-
-        /* Canvas (Game Area) */
-        #gameCanvas {
-            background-color: #000000;
-            display: block;
-            border-radius: 5px;
-        }
-
-        /* Message Box (For Start/End Game/Pause) */
-        #messageBox {
-            position: fixed; 
+        /* Game Overlay Styling */
+        .game-overlay {
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.85); 
             display: flex;
-            flex-direction: column;
-            align-items: center;
             justify-content: center;
-            text-align: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(5px);
+            border-radius: 20px;
             z-index: 10;
+            pointer-events: none; /* Allows clicks to pass through if not visible */
         }
-
-        .message-content {
-            background: #111;
-            border: 2px solid #ff00ff; 
-            box-shadow: 0 0 20px #ff00ff;
-            padding: 30px 40px;
-            border-radius: 10px;
+        
+        .overlay-content {
+            padding: 30px;
+            background: #1f2937;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 0 40px rgba(255, 255, 255, 0.2);
         }
-
-        .message-content h2 {
-            font-size: 2.5rem;
-            color: #ff00ff;
-            text-shadow: 0 0 5px #ff00ff;
-            margin-top: 0;
+        
+        .overlay-content h2 {
+            font-size: 3rem;
+            margin-bottom: 10px;
         }
-
-        .message-content p {
+        
+        .overlay-content p {
             font-size: 1.2rem;
-            color: #c0f0c0;
-            margin-bottom: 20px;
-        }
-
-        #startButton {
-            background: #00ff00;
-            color: #000000;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            font-size: 1.2rem;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 0 #00aa00;
-        }
-
-        #startButton:hover {
-            background: #00dd00;
-            box-shadow: 0 2px 0 #00aa00;
-            transform: translateY(2px);
-        }
-
-        /* Mobile Adjustments */
-        @media (max-width: 600px) {
-            #scoreboard {
-                font-size: 2rem;
-            }
-            .message-content h2 {
-                font-size: 1.8rem;
-            }
-            .message-content p {
-                font-size: 1rem;
-            }
-            .controls {
-                flex-direction: column;
-                gap: 10px;
-            }
+            margin-top: 5px;
         }
 
     </style>
@@ -164,569 +124,530 @@
 <body>
 
     <div class="game-container">
-        <div id="scoreboard">0 - 0</div>
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
         
-        <!-- Controls -->
-        <div class="controls">
-            <button id="pauseButton" class="control-button" disabled>Pause (P)</button>
-            <label for="difficulty">Difficulty:</label>
-            <select id="difficulty" class="control-select">
-                <option value="4">Easy</option>
-                <option value="6" selected>Medium</option>
-                <option value="8">Hard</option>
-                <option value="10">Insane</option>
-            </select>
-            <!-- MAX SCORE SELECTOR -->
-            <label for="maxScore">Score To Win:</label>
-            <select id="maxScore" class="control-select">
-                <option value="5" selected>5</option>
-                <option value="7">7</option>
-                <option value="10">10</option>
-            </select>
+        <!-- Game State Overlay (Hidden by default) -->
+        <div id="gameOverlay" class="game-overlay" style="display: none;">
+            <div class="overlay-content">
+                <h2 id="overlayTitle">PAUSED</h2>
+                <p id="overlayMessage">Press ESC to Resume</p>
+                <p id="overlayScore"></p>
+            </div>
         </div>
-    </div>
 
-    <!-- Message Overlay -->
-    <div id="messageBox">
-        <div class="message-content">
-            <h2 id="messageHeader">Welcome to Arcade Pong!</h2>
-            <p id="messageBody">
-                Use your **mouse or touch** to move the left paddle (Player 1). <br>
-                Select your difficulty and score limit below.
-            </p>
-            <button id="startButton">Start Game</button>
+        <!-- Scoreboard -->
+        <div class="scoreboard">
+            <div id="score-p1" class="player-info">P1 (Red): 0</div>
+            <div id="score-p2" class="player-info">P2 (Blue): 0</div>
+        </div>
+
+        <!-- Game Canvas -->
+        <canvas id="handballCanvas" width="800" height="500"></canvas>
+
+        <!-- Controls Information -->
+        <div class="controls-info">
+            <p><strong>Player 1 (Red):</strong> Move (W, A, S, D), **Dash (Left Shift)**.</p>
+            <p><strong>Player 2 (Blue):</strong> Move (Arrows), **Dash (Right Control)**.</p>
+            <p>Press **ESC** to Pause/Resume. (The game now runs indefinitely!)</p>
         </div>
     </div>
 
     <script>
-        // Game Constants
-        const CANVAS_WIDTH = 800;
-        const CANVAS_HEIGHT = 600;
-        const PADDLE_WIDTH = 10;
-        const PADDLE_HEIGHT = 100; // Default paddle height
-        const BALL_SIZE = 10;
-        
-        // Power-up Constants
-        const POWERUP_SIZE = 20;
-        const POWERUP_DURATION_MS = 5000;
-        const POWERUP_CHANCE = 0.15; // 15% chance to spawn on score reset
-
-        // Dynamic Game State Variables
-        let AI_SPEED_CURRENT = 6;
-        let INITIAL_BALL_SPEED_CURRENT = 7;
-        let MAX_SCORE_CURRENT = 5; 
-        
-        let isAudioReady = false; // New flag to track audio initialization status
-
-        // Canvas Setup
-        const canvas = document.getElementById('gameCanvas');
+        // Game Constants and Initialization
+        const canvas = document.getElementById('handballCanvas');
         const ctx = canvas.getContext('2d');
-        const scoreboard = document.getElementById('scoreboard');
-        const messageBox = document.getElementById('messageBox');
-        const messageHeader = document.getElementById('messageHeader');
-        const messageBody = document.getElementById('messageBody');
-        const startButton = document.getElementById('startButton');
-        const pauseButton = document.getElementById('pauseButton');
-        const difficultySelect = document.getElementById('difficulty');
-        const maxScoreSelect = document.getElementById('maxScore');
+        const overlay = document.getElementById('gameOverlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const overlayMessage = document.getElementById('overlayMessage');
+        const overlayScore = document.getElementById('overlayScore');
+        // Removed: timerDisplay variable
 
-        let animationFrameId = null;
-        let isGameRunning = false; 
-        let isPaused = true;       
-        let playerY = (CANVAS_HEIGHT - PADDLE_HEIGHT) / 2;
-        let aiY = (CANVAS_HEIGHT - PADDLE_HEIGHT) / 2;
-        let scorePlayer = 0;
-        let scoreAI = 0;
-        let playerPaddleHeight = PADDLE_HEIGHT; // Dynamic height for player paddle
+        // Dimensions
+        const COURT_WIDTH = 800; // Fixed internal logic size
+        const COURT_HEIGHT = 500;
+        const PLAYER_RADIUS = 20;
+        const BALL_RADIUS = 12;
+        const GOAL_WIDTH = 30;
+        const GOAL_HEIGHT = 160;
 
-        // Ball State
-        let ballX, ballY, ballSpeedX, ballSpeedY, ballSpeedMagnitude;
+        // Game Timing Constants
+        const FPS = 60;
+        const frameTime = 1000 / FPS;
+        const PAUSE_KEY = 'Escape';
 
-        // Power-up State
-        let powerUpX = -50; // Off screen initially
-        let powerUpY = -50;
-        let isPowerUpActive = false;
-        let powerUpTimer = null;
+        // Dash Constants
+        const DASH_SPEED_MULTIPLIER = 2.5;
+        const DASH_DURATION_FRAMES = 15; // 0.25 seconds
+        const DASH_COOLDOWN_FRAMES = 180; // 3 seconds
+
+        // Game State
+        let score = { p1: 0, p2: 0 };
+        let isGameRunning = false;
+        let isPaused = false;
+        // Removed: timeRemaining variable
+        let lastTime = 0;
+
+        // Player Factory (to easily create player objects with dash properties)
+        const createPlayer = (x, y, color, keys, dashKey, isP1) => ({
+            x, y,
+            radius: PLAYER_RADIUS,
+            color,
+            baseColor: color,
+            speed: 5,
+            vx: 0,
+            vy: 0,
+            keys,
+            dashKey,
+            dashTimer: 0,
+            cooldownTimer: 0,
+            isP1
+        });
+
+        // --- Game Objects ---
+        let player1 = createPlayer(
+            COURT_WIDTH * 0.25, COURT_HEIGHT / 2, '#ef4444', 
+            { up: 'w', down: 's', left: 'a', right: 'd' }, 
+            'Shift', true
+        );
+
+        let player2 = createPlayer(
+            COURT_WIDTH * 0.75, COURT_HEIGHT / 2, '#3b82f6', 
+            { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' }, 
+            'Control', false
+        );
+
+        let ball = {
+            x: COURT_WIDTH / 2,
+            y: COURT_HEIGHT / 2,
+            radius: BALL_RADIUS,
+            color: '#fcd34d',
+            vx: 0,
+            vy: 0,
+            friction: 0.99,
+            maxSpeed: 10
+        };
+
+        // Input
+        let keysPressed = {};
         
-        // Sound Effects (Tone.js)
-        let paddleSynth, scoreSynth, wallSynth;
+        // --- Audio Context for simple sounds ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+        
+        // Simple Sound Generator (Beep)
+        function playBeep(frequency = 440, duration = 0.1, volume = 0.5) {
+            if (!audioCtx) return;
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
 
-        /**
-         * Initializes the audio context and sound synths using Tone.js.
-         */
-        function initAudio() {
-            // Synth for paddle hits (short, high-pitched)
-            paddleSynth = new Tone.PluckSynth().toDestination();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
 
-            // Synth for wall bounces (low, metallic noise)
-            wallSynth = new Tone.NoiseSynth({
-                noise: { type: 'pink' },
-                envelope: { attack: 0.001, decay: 0.1, sustain: 0, release: 0.1 }
-            }).toDestination();
+            oscillator.frequency.value = frequency;
+            gainNode.gain.value = volume;
 
-            // Synth for scoring (simple melodic tone)
-            scoreSynth = new Tone.Synth({
-                oscillator: { type: 'square' },
-                envelope: { attack: 0.05, decay: 0.2, sustain: 0, release: 0.3 }
-            }).toDestination();
-
-            isAudioReady = true; // Mark audio as initialized
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + duration);
         }
-        
-        // --- Utility Functions ---
 
-        /**
-         * Resets the ball to the center with a random initial direction.
-         * @param {number} direction - 1 for serving towards AI, -1 for serving towards player.
-         */
-        function resetBall(direction) {
-            ballX = CANVAS_WIDTH / 2;
-            ballY = CANVAS_HEIGHT / 2;
-            ballSpeedMagnitude = INITIAL_BALL_SPEED_CURRENT;
+        // --- Core Functions ---
 
-            let angle = Math.random() * (Math.PI / 2) - (Math.PI / 4); 
-
-            if (direction === -1) { 
-                angle += Math.PI;
-            }
-
-            ballSpeedX = Math.cos(angle) * ballSpeedMagnitude;
-            ballSpeedY = Math.sin(angle) * ballSpeedMagnitude;
+        function setupGame() {
+            // Event listeners for input
+            window.addEventListener('keydown', (e) => { 
+                keysPressed[e.key] = true; 
+                // Handle Pause
+                if (e.key === PAUSE_KEY) {
+                    togglePause();
+                }
+            });
+            window.addEventListener('keyup', (e) => { keysPressed[e.key] = false; });
             
-            // Try to spawn power-up after a score
-            spawnPowerUp();
+            // Start the game loop
+            isGameRunning = true;
+            requestAnimationFrame(gameLoop);
         }
-        
-        /**
-         * Randomly spawns a power-up in the center third of the screen.
-         */
-        function spawnPowerUp() {
-            if (isPowerUpActive) return;
 
-            // 15% chance to spawn on score reset
-            if (Math.random() < POWERUP_CHANCE) {
-                // Spawn in the middle 50% of the screen
-                const minX = CANVAS_WIDTH * 0.25;
-                const maxX = CANVAS_WIDTH * 0.75 - POWERUP_SIZE;
-
-                powerUpX = minX + Math.random() * (maxX - minX);
-                powerUpY = Math.random() * (CANVAS_HEIGHT - POWERUP_SIZE);
-                isPowerUpActive = true;
-
-                // Power-up disappears after 8 seconds if not collected
-                clearTimeout(powerUpTimer);
-                powerUpTimer = setTimeout(() => {
-                    if (isPowerUpActive) {
-                        isPowerUpActive = false;
-                        powerUpX = -50; 
-                        powerUpY = -50;
-                    }
-                }, 8000); 
+        function togglePause() {
+            // Removed: timeRemaining check
+            isPaused = !isPaused;
+            if (isPaused) {
+                overlayTitle.textContent = "PAUSED";
+                overlayMessage.textContent = "Press ESC to Resume";
+                overlayScore.textContent = "";
+                overlay.style.display = 'flex';
+                playBeep(220, 0.2, 0.5);
+            } else {
+                overlay.style.display = 'none';
+                lastTime = performance.now(); // Reset lastTime to prevent huge delta on resume
             }
         }
+        
+        function endGame() {
+            // This function is no longer called automatically, but kept for manual triggering if needed.
+            isGameRunning = false;
+            let winner = 'TIE!';
+            let winnerColor = '#fcd34d'; // Yellow
+            
+            if (score.p1 > score.p2) {
+                winner = 'Player 1 (Red) WINS!';
+                winnerColor = player1.baseColor;
+            } else if (score.p2 > score.p1) {
+                winner = 'Player 2 (Blue) WINS!';
+                winnerColor = player2.baseColor;
+            }
+            
+            overlayTitle.textContent = "GAME OVER";
+            overlayTitle.style.color = winnerColor;
+            overlayMessage.textContent = winner;
+            overlayScore.textContent = `Final Score: Red ${score.p1} - ${score.p2} Blue`;
+            overlay.style.display = 'flex';
+            playBeep(100, 1.0, 0.9); // Low, long tone for end game
+        }
+
+        function resetBall(scorer) {
+            ball.x = COURT_WIDTH / 2;
+            ball.y = COURT_HEIGHT / 2;
+            ball.vx = 0;
+            ball.vy = 0;
+
+            // Give a slight kick to the non-scorer
+            if (scorer === player1) {
+                ball.vx = 4;
+            } else if (scorer === player2) {
+                ball.vx = -4;
+            }
+            
+            player1.x = COURT_WIDTH * 0.25;
+            player1.y = COURT_HEIGHT / 2;
+            player2.x = COURT_WIDTH * 0.75;
+            player2.y = COURT_HEIGHT / 2;
+            player1.vx = player1.vy = 0;
+            player2.vx = player2.vy = 0;
+        }
+
+        function updateScoreboard() {
+            document.getElementById('score-p1').textContent = `P1 (Red): ${score.p1}`;
+            document.getElementById('score-p2').textContent = `P2 (Blue): ${score.p2}`;
+        }
+        
+        // Removed: formatTime function
+        // Removed: updateTimer function
 
 
-        // --- Drawing Functions ---
+        // --- Drawing ---
 
-        /**
-         * Clears the canvas with semi-transparent fill to create a ghosting ball trail effect.
-         */
-        function drawBackground() {
-            // Use semi-transparent black fill (alpha 0.2) to create a subtle ghosting trail
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-            // Redraw the center net fully opaque
-            ctx.strokeStyle = '#006600'; 
-            ctx.lineWidth = 4;
-            ctx.setLineDash([15, 10]); 
-            ctx.globalAlpha = 1.0; 
+        function drawCourt() {
+            // Center Line and Circle (as before)
             ctx.beginPath();
-            ctx.moveTo(CANVAS_WIDTH / 2, 0);
-            ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT);
+            ctx.moveTo(COURT_WIDTH / 2, 0);
+            ctx.lineTo(COURT_WIDTH / 2, COURT_HEIGHT);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.lineWidth = 3;
             ctx.stroke();
-            ctx.setLineDash([]); 
-        }
+            ctx.closePath();
 
-        /**
-         * Draws a paddle.
-         * @param {number} x - X coordinate.
-         * @param {number} y - Y coordinate.
-         * @param {number} height - The current height of the paddle.
-         */
-        function drawPaddle(x, y, height) {
-            ctx.globalAlpha = 1.0; 
-            ctx.fillStyle = '#ff00ff';
-            ctx.shadowColor = '#ff00ff';
-            ctx.shadowBlur = 10;
-            ctx.fillRect(x, y, PADDLE_WIDTH, height);
-            ctx.shadowBlur = 0;
-        }
-
-        /**
-         * Draws the ball.
-         */
-        function drawBall() {
-            ctx.globalAlpha = 1.0; 
-            ctx.fillStyle = '#00ff00'; 
-            ctx.shadowColor = '#00ff00';
-            ctx.shadowBlur = 10;
             ctx.beginPath();
-            ctx.arc(ballX, ballY, BALL_SIZE / 2, 0, Math.PI * 2, true);
+            ctx.arc(COURT_WIDTH / 2, COURT_HEIGHT / 2, 50, 0, 2 * Math.PI);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.closePath();
+
+            // Goal Areas
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 2;
+
+            // Left Goal Area (P1 Side)
+            ctx.beginPath();
+            ctx.rect(5, COURT_HEIGHT / 2 - GOAL_HEIGHT / 2 - 5, 100, GOAL_HEIGHT + 10);
+            ctx.stroke();
+
+            // Right Goal Area (P2 Side)
+            ctx.beginPath();
+            ctx.rect(COURT_WIDTH - 105, COURT_HEIGHT / 2 - GOAL_HEIGHT / 2 - 5, 100, GOAL_HEIGHT + 10);
+            ctx.stroke();
+        }
+
+        function drawGoal(x, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, COURT_HEIGHT / 2 - GOAL_HEIGHT / 2, GOAL_WIDTH, GOAL_HEIGHT);
+        }
+
+        function drawPlayer(player) {
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            // Use the current color (which flashes during dash)
+            ctx.fillStyle = player.color; 
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = player.color;
             ctx.fill();
             ctx.shadowBlur = 0;
-        }
-        
-        /**
-         * Draws the power-up item.
-         */
-        function drawPowerUp() {
-            if (isPowerUpActive) {
-                ctx.fillStyle = '#ffff00'; // Yellow/Gold color
-                ctx.shadowColor = '#ffff00';
-                ctx.shadowBlur = 15;
-                // Draw a simple square for the power-up
-                ctx.fillRect(powerUpX, powerUpY, POWERUP_SIZE, POWERUP_SIZE); 
-                
-                // Draw a '+' sign for clarity
-                ctx.fillStyle = '#000000';
-                ctx.fillRect(powerUpX + 5, powerUpY + 9, 10, 2);
-                ctx.fillRect(powerUpX + 9, powerUpY + 5, 2, 10);
-
-                ctx.shadowBlur = 0;
-            }
-        }
-
-
-        // --- Game Logic ---
-
-        /**
-         * Updates the AI paddle position to track the ball using dynamic speed.
-         */
-        function moveAI() {
-            // AI always uses the default paddle height
-            const aiCenter = aiY + PADDLE_HEIGHT / 2; 
-            const diff = ballY - aiCenter;
-
-            if (diff > 0) {
-                aiY = Math.min(aiY + AI_SPEED_CURRENT, CANVAS_HEIGHT - PADDLE_HEIGHT);
-            } else if (diff < 0) {
-                aiY = Math.max(aiY - AI_SPEED_CURRENT, 0);
-            }
-        }
-
-        /**
-         * Handles collisions, scoring, and plays sound effects.
-         */
-        function update() {
-            // 1. Move Ball
-            ballX += ballSpeedX;
-            ballY += ballSpeedY;
-
-            // 2. Move AI
-            moveAI();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.closePath();
             
-            // 3. Power-up Collision Check (Player only) - CORRECTION: Using robust AABB collision
-            if (isPowerUpActive) {
-                const ballRadius = BALL_SIZE / 2;
-
-                // Check for collision between the ball (circle) and the power-up (square)
-                if (
-                    ballX + ballRadius > powerUpX && // Ball right edge past power-up left edge
-                    ballX - ballRadius < powerUpX + POWERUP_SIZE && // Ball left edge before power-up right edge
-                    ballY + ballRadius > powerUpY && // Ball bottom edge past power-up top edge
-                    ballY - ballRadius < powerUpY + POWERUP_SIZE // Ball top edge before power-up bottom edge
-                ) {
-                    // Check if ball is moving towards the player paddle's side (left)
-                    // This ensures the power-up is collected as a benefit to the player
-                    if (ballSpeedX < 0) { 
-                        // Power-up collected!
-                        isPowerUpActive = false;
-                        powerUpX = -50; 
-                        powerUpY = -50;
-                        
-                        // Increase paddle size temporarily
-                        playerPaddleHeight = PADDLE_HEIGHT * 2;
-                        
-                        // Play a positive sound
-                        if (scoreSynth) scoreSynth.triggerAttackRelease('E6', '8n');
-                        
-                        // Set timer to revert size after POWERUP_DURATION_MS
-                        clearTimeout(powerUpTimer);
-                        powerUpTimer = setTimeout(() => {
-                            playerPaddleHeight = PADDLE_HEIGHT;
-                            if (scoreSynth) scoreSynth.triggerAttackRelease('D3', '8n'); // Revert sound
-                        }, POWERUP_DURATION_MS); 
-                    }
-                }
-            }
-
-
-            // 4. Wall Collision (Top/Bottom) - PLAYS WALL SOUND
-            if (ballY - BALL_SIZE / 2 < 0 || ballY + BALL_SIZE / 2 > CANVAS_HEIGHT) {
-                ballSpeedY = -ballSpeedY; 
-                if (wallSynth) wallSynth.triggerAttackRelease('C2', '8n');
-            }
-
-            // 5. Player Paddle Collision (Left side) - PLAYS PADDLE SOUND
-            if (ballSpeedX < 0) { 
-                if (
-                    ballX - BALL_SIZE / 2 < PADDLE_WIDTH && 
-                    ballY > playerY && 
-                    ballY < playerY + playerPaddleHeight // Use dynamic height
-                ) {
-                    // Reverse X direction and calculate reflection angle
-                    const hitPoint = (ballY - (playerY + playerPaddleHeight / 2)) / (playerPaddleHeight / 2);
-                    const angle = hitPoint * (Math.PI / 4);
-                    
-                    ballSpeedMagnitude = Math.min(ballSpeedMagnitude + 0.5, 20); 
-                    
-                    ballSpeedX = Math.cos(angle) * ballSpeedMagnitude;
-                    ballSpeedY = Math.sin(angle) * ballSpeedMagnitude;
-                    
-                    if (paddleSynth) paddleSynth.triggerAttackRelease('C5', '16n');
-                }
-            }
-
-            // 6. AI Paddle Collision (Right side) - PLAYS PADDLE SOUND
-            if (ballSpeedX > 0) { 
-                if (
-                    ballX + BALL_SIZE / 2 > CANVAS_WIDTH - PADDLE_WIDTH && 
-                    ballY > aiY && 
-                    ballY < aiY + PADDLE_HEIGHT // AI uses default height
-                ) {
-                    // Reverse X direction and calculate reflection angle
-                    const hitPoint = (ballY - (aiY + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
-                    const angle = hitPoint * (Math.PI / 4);
-                    
-                    ballSpeedMagnitude = Math.min(ballSpeedMagnitude + 0.5, 20); 
-
-                    ballSpeedX = -Math.cos(angle) * ballSpeedMagnitude; 
-                    ballSpeedY = Math.sin(angle) * ballSpeedMagnitude;
-                    
-                    if (paddleSynth) paddleSynth.triggerAttackRelease('G5', '16n');
-                }
-            }
-
-            // 7. Scoring (Left Wall: AI scores) - PLAYS SCORE SOUND
-            if (ballX < 0) {
-                scoreAI++;
-                scoreboard.textContent = `${scorePlayer} - ${scoreAI}`;
-                if (scoreSynth) {
-                    scoreSynth.triggerAttackRelease('C4', '4n', Tone.now(), 0.5); 
-                    scoreSynth.triggerAttackRelease('G4', '4n', Tone.now() + 0.2, 0.5);
-                }
-                
-                if (scoreAI >= MAX_SCORE_CURRENT) {
-                    endGame("AI Wins!");
-                } else {
-                    resetBall(1); // Serve towards AI
-                }
-            }
-
-            // 8. Scoring (Right Wall: Player scores) - PLAYS SCORE SOUND
-            if (ballX > CANVAS_WIDTH) {
-                scorePlayer++;
-                scoreboard.textContent = `${scorePlayer} - ${scoreAI}`;
-                if (scoreSynth) {
-                    scoreSynth.triggerAttackRelease('C5', '4n', Tone.now(), 0.5); 
-                    scoreSynth.triggerAttackRelease('G5', '4n', Tone.now() + 0.2, 0.5);
-                }
-                
-                if (scorePlayer >= MAX_SCORE_CURRENT) {
-                    endGame("Player Wins!");
-                } else {
-                    resetBall(-1); // Serve towards Player
-                }
+            // Draw Cooldown indicator
+            if (player.cooldownTimer > 0) {
+                ctx.beginPath();
+                const progress = player.cooldownTimer / DASH_COOLDOWN_FRAMES;
+                const startAngle = -Math.PI / 2;
+                const endAngle = startAngle + (2 * Math.PI * progress);
+                ctx.arc(player.x, player.y, player.radius + 5, startAngle, endAngle);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
             }
         }
 
-        // --- Game Loop and Control ---
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = ball.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#0d1a33';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.closePath();
+        }
 
-        /**
-         * The main game loop function.
-         */
-        function gameLoop() {
-            if (!isGameRunning || isPaused) {
-                cancelAnimationFrame(animationFrameId);
-                return;
-            }
+        function drawGame() {
+            // Clear canvas
+            ctx.clearRect(0, 0, COURT_WIDTH, COURT_HEIGHT);
 
-            // 1. Logic Update
-            update();
+            // 1. Draw Court Markings
+            drawCourt();
 
-            // 2. Drawing
-            drawBackground();
-            drawPaddle(0, playerY, playerPaddleHeight); // Draw player with dynamic height
-            drawPaddle(CANVAS_WIDTH - PADDLE_WIDTH, aiY, PADDLE_HEIGHT); // Draw AI with static height
+            // 2. Draw Goals
+            drawGoal(0, '#880000'); // Left (P1 goal)
+            drawGoal(COURT_WIDTH - GOAL_WIDTH, '#000088'); // Right (P2 goal)
+
+            // 3. Draw Players and Ball
+            drawPlayer(player1);
+            drawPlayer(player2);
             drawBall();
-            drawPowerUp(); // Draw power-up if active
-
-            // 3. Next Frame
-            animationFrameId = requestAnimationFrame(gameLoop);
         }
+
+        // --- Logic ---
         
-        /**
-         * Contains the actual logic to start the game loop once setup is complete.
-         */
-        function startInternalGameLogic() {
-            resetBall(Math.random() < 0.5 ? -1 : 1);
-            
-            isPaused = false;
-            isGameRunning = true;
-            pauseButton.disabled = false;
-            pauseButton.textContent = "Pause (P)";
-            gameLoop();
-        }
+        function updatePlayerState(player) {
+            // Handle Dash Cooldown and Duration
+            if (player.cooldownTimer > 0) player.cooldownTimer--;
 
-        /**
-         * Initializes the game state and starts the loop.
-         */
-        function startGame() {
-            scorePlayer = 0;
-            scoreAI = 0;
-            
-            // Reset player paddle height and clear power-up state
-            playerPaddleHeight = PADDLE_HEIGHT;
-            isPowerUpActive = false;
-            powerUpX = -50;
-            clearTimeout(powerUpTimer);
+            // Check for Dash Activation
+            if (keysPressed[player.dashKey] && player.cooldownTimer === 0) {
+                player.dashTimer = DASH_DURATION_FRAMES;
+                player.cooldownTimer = DASH_COOLDOWN_FRAMES;
+                playBeep(880, 0.05, 0.7); // Dash sound
+            }
 
-            // Set dynamic game configuration based on selectors
-            MAX_SCORE_CURRENT = parseInt(maxScoreSelect.value);
-            AI_SPEED_CURRENT = parseInt(difficultySelect.value);
-            INITIAL_BALL_SPEED_CURRENT = 7 + (AI_SPEED_CURRENT - 6) * 0.5;
-
-            scoreboard.textContent = `${scorePlayer} - ${scoreAI}`;
-            messageBox.style.display = 'none';
-            
-            // Check if audio is initialized. If not, initialize it and then start the game.
-            if (!isAudioReady) {
-                // Ensure audio context is resumed/started on user interaction
-                Tone.start().then(() => {
-                    initAudio(); // initializes synths and sets isAudioReady = true
-                    // Now that audio is ready, start the game logic
-                    startInternalGameLogic();
-                }).catch(e => {
-                    console.error("Audio context failed to start:", e);
-                    // Start game logic even if audio fails
-                    startInternalGameLogic();
-                });
+            // Apply Dash Speed/Visuals
+            if (player.dashTimer > 0) {
+                player.speed = 5 * DASH_SPEED_MULTIPLIER;
+                player.dashTimer--;
+                // Flashing effect during dash
+                player.color = player.dashTimer % 4 < 2 ? player.baseColor : '#ffffff'; 
             } else {
-                startInternalGameLogic();
+                player.speed = 5;
+                player.color = player.baseColor; 
             }
         }
-        
-        /**
-         * Toggles the game pause state.
-         */
-        function togglePause() {
-            if (!isGameRunning) return; 
 
-            if (isPaused) {
-                // Resume
-                isPaused = false;
-                pauseButton.textContent = "Pause (P)";
-                messageBox.style.display = 'none';
-                gameLoop(); // Restart the animation loop
+        function handleInput(player) {
+            player.vx = 0;
+            player.vy = 0;
+            let moved = false;
+
+            if (keysPressed[player.keys.up]) { player.vy = -player.speed; moved = true; }
+            if (keysPressed[player.keys.down]) { player.vy = player.speed; moved = true; }
+            if (keysPressed[player.keys.left]) { player.vx = -player.speed; moved = true; }
+            if (keysPressed[player.keys.right]) { player.vx = player.speed; moved = true; }
+            
+            // Normalize diagonal movement speed
+            if (moved && player.vx !== 0 && player.vy !== 0) {
+                const diagSpeed = player.speed / Math.sqrt(2);
+                player.vx = player.vx > 0 ? diagSpeed : -diagSpeed;
+                player.vy = player.vy > 0 ? diagSpeed : -diagSpeed;
+            }
+
+            // Apply movement
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Player boundary and half-court constraint
+            const halfCourt = COURT_WIDTH / 2;
+            const minX = player.radius;
+            const maxX = COURT_WIDTH - player.radius;
+            const minY = player.radius;
+            const maxY = COURT_HEIGHT - player.radius;
+
+            // Horizontal boundary (Court walls + Half-court)
+            if (player.isP1) {
+                player.x = Math.max(minX, Math.min(halfCourt - player.radius / 2, player.x));
             } else {
-                // Pause
-                isPaused = true;
-                pauseButton.textContent = "Resume (P)";
-                cancelAnimationFrame(animationFrameId);
+                player.x = Math.max(halfCourt + player.radius / 2, Math.min(maxX, player.x));
+            }
+
+            // Vertical boundary (Court walls)
+            player.y = Math.max(minY, Math.min(maxY, player.y));
+        }
+
+        function updateBall() {
+            // 1. Apply friction and move
+            ball.vx *= ball.friction;
+            ball.vy *= ball.friction;
+            
+            // Limit max speed
+            let speed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+            if (speed > ball.maxSpeed) {
+                ball.vx = (ball.vx / speed) * ball.maxSpeed;
+                ball.vy = (ball.vy / speed) * ball.maxSpeed;
+            }
+
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // 2. Wall Collision (Ball)
+            if (ball.x - ball.radius < 0 || ball.x + ball.radius > COURT_WIDTH) {
+                ball.vx *= -1;
+                ball.x = Math.max(ball.radius, Math.min(COURT_WIDTH - ball.radius, ball.x)); // Clamp
+                playBeep(200, 0.05, 0.4);
+            }
+            if (ball.y - ball.radius < 0 || ball.y + ball.radius > COURT_HEIGHT) {
+                ball.vy *= -1;
+                ball.y = Math.max(ball.radius, Math.min(COURT_HEIGHT - ball.radius, ball.y)); // Clamp
+                playBeep(200, 0.05, 0.4);
+            }
+        }
+
+        // Ball-Player Collision (Basic Impulse/Push)
+        function checkBallPlayerCollision(player) {
+            const dx = ball.x - player.x;
+            const dy = ball.y - player.y;
+            const distanceSquared = dx * dx + dy * dy;
+            const minDistance = ball.radius + player.radius;
+            const minDistanceSquared = minDistance * minDistance;
+
+            if (distanceSquared < minDistanceSquared) {
+                playBeep(350, 0.08, 0.6);
+
+                // Calculate the overlap
+                const distance = Math.sqrt(distanceSquared);
+                const overlap = minDistance - distance;
+
+                // Push the ball away to resolve collision
+                const normalX = dx / distance;
+                const normalY = dy / distance;
+
+                // Apply movement to resolve overlap
+                ball.x += normalX * overlap * 1.05; 
+                ball.y += normalY * overlap * 1.05;
+
+                // Calculate the push vector based on player's current speed
+                const playerMovementSpeed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+                // Push strength is scaled by the player's current speed, especially high if dashing
+                let pushStrength = 1.0 + (playerMovementSpeed / 5); 
                 
-                messageHeader.textContent = "Game Paused";
-                messageBody.textContent = "Press 'P' or click 'Resume' to continue.";
-                startButton.textContent = 'Resume Game';
-                messageBox.style.display = 'flex';
+                // If dashing, make the push much stronger
+                if (player.dashTimer > 0) {
+                    pushStrength *= 1.5;
+                }
+
+                // Apply new velocity to the ball (elastic collision approximation)
+                ball.vx = normalX * pushStrength * 8;
+                ball.vy = normalY * pushStrength * 8;
             }
         }
 
-        /**
-         * Ends the game and displays the winner.
-         */
-        function endGame(winnerMessage) {
-            isGameRunning = false;
-            isPaused = true;
-            cancelAnimationFrame(animationFrameId);
-            pauseButton.disabled = true;
+        // Goal Check
+        function checkGoal() {
+            const goalTop = COURT_HEIGHT / 2 - GOAL_HEIGHT / 2;
+            const goalBottom = COURT_HEIGHT / 2 + GOAL_HEIGHT / 2;
 
-            // Stop the power-up timer if running
-            clearTimeout(powerUpTimer);
+            // Left Goal (Player 2 scores)
+            if (ball.x - ball.radius <= GOAL_WIDTH && ball.y > goalTop && ball.y < goalBottom) {
+                score.p2++;
+                updateScoreboard();
+                resetBall(player2);
+                playBeep(600, 0.5, 0.8); 
+                return true;
+            }
+
+            // Right Goal (Player 1 scores)
+            if (ball.x + ball.radius >= COURT_WIDTH - GOAL_WIDTH && ball.y > goalTop && ball.y < goalBottom) {
+                score.p1++;
+                updateScoreboard();
+                resetBall(player1);
+                playBeep(600, 0.5, 0.8); 
+                return true;
+            }
+            return false;
+        }
+
+
+        // --- Game Loop ---
+        function gameLoop(currentTime) {
+            if (!isGameRunning) return;
+
+            const deltaTime = currentTime - lastTime;
             
-            messageHeader.textContent = winnerMessage;
-            messageBody.textContent = `Final Score: ${scorePlayer} - ${scoreAI}. Click below to play again.`;
-            startButton.textContent = 'Play Again';
-            messageBox.style.display = 'flex';
-        }
+            // Only update game state if not paused
+            if (!isPaused) {
+                // 1. Update Player States (Dash cooldown/duration)
+                updatePlayerState(player1);
+                updatePlayerState(player2);
 
+                // 2. Handle Input & Player Movement
+                handleInput(player1);
+                handleInput(player2);
 
-        // --- Event Listeners ---
+                // 3. Update Ball Position and Physics
+                updateBall();
 
-        /**
-         * Moves the player paddle based on mouse/touch Y position.
-         */
-        function handleInput(event) {
-            if (!isGameRunning || isPaused) return;
+                // 4. Collision Checks
+                checkBallPlayerCollision(player1);
+                checkBallPlayerCollision(player2);
 
-            let clientY;
-            if (event.touches) {
-                clientY = event.touches[0].clientY;
-            } else {
-                clientY = event.clientY;
+                // 5. Goal Check
+                checkGoal();
+
+                // Removed: updateTimer(deltaTime) call
             }
 
-            const rect = canvas.getBoundingClientRect();
-            let relativeY = clientY - rect.top;
+            // 6. Draw Everything (even if paused, to show the static paused screen)
+            drawGame();
+
+            lastTime = currentTime;
+
+            // Loop
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the game on window load
+        window.onload = function() {
+            // Set up the responsive canvas size based on parent container
+            const container = document.querySelector('.game-container');
+            const aspectRatio = COURT_WIDTH / COURT_HEIGHT;
+            let w = container.clientWidth * 0.9;
+            let h = w / aspectRatio;
+
+            if (h > window.innerHeight * 0.8) {
+                h = window.innerHeight * 0.8;
+                w = h * aspectRatio;
+            }
             
-            // Calculate new Y position for the paddle center
-            let newCenterY = relativeY;
+            // Ensure canvas is set to the logical dimensions for drawing, 
+            // the CSS will handle the visible scaling.
+            canvas.width = COURT_WIDTH; 
+            canvas.height = COURT_HEIGHT; 
+            
+            updateScoreboard();
+            setupGame();
+        };
 
-            // Constrain the paddle position using the dynamic playerPaddleHeight
-            let newPaddleY = newCenterY - playerPaddleHeight / 2;
-
-            // Apply constraints, ensuring the top of the paddle is never negative 
-            // and the bottom of the paddle is never past the canvas bottom.
-            playerY = Math.max(0, Math.min(newPaddleY, CANVAS_HEIGHT - playerPaddleHeight));
-        }
-
-        // Input listeners
-        canvas.addEventListener('mousemove', handleInput);
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault(); 
-            handleInput(e);
-        }, { passive: false });
-        
-        // Button listeners
-        startButton.addEventListener('click', () => {
-             // If starting from a paused state, resume
-             if (isPaused && isGameRunning) {
-                 togglePause();
-             } else {
-                 startGame();
-             }
-        });
-        
-        pauseButton.addEventListener('click', togglePause);
-        
-        // Keyboard listener for pause/resume
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'p' || e.key === 'P') {
-                togglePause();
-            }
-        });
-
-        // Initial draw when the page loads
-        window.onload = () => {
-             // Set the initial canvas size on load
-             canvas.width = CANVAS_WIDTH;
-             canvas.height = CANVAS_HEIGHT;
-             drawBackground();
-             drawPaddle(0, playerY, playerPaddleHeight);
-             drawPaddle(CANVAS_WIDTH - PADDLE_WIDTH, aiY, PADDLE_HEIGHT);
-        }
     </script>
-
 </body>
 </html>
