@@ -50,7 +50,7 @@
         */
         .scoreboard {
             display: flex;
-            justify-content: space-around;
+            justify-content: space-between; 
             width: 100%;
             max-width: 800px;
             margin-bottom: 15px;
@@ -65,6 +65,7 @@
             min-width: 150px;
             box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
             transition: background-color 0.3s;
+            font-size: 1.5rem; /* Reduced font size to accommodate button */
         }
 
         #score-p1 { background-color: #ef4444; } /* Red */
@@ -84,6 +85,30 @@
             color: #fcd34d;
         }
         
+        /* Reset Button Styling */
+        .reset-button {
+            background-color: #f59e0b; /* Amber */
+            color: #0d1a33;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+            align-self: center;
+        }
+
+        .reset-button:hover {
+            background-color: #d97706; /* Darker amber */
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.6);
+        }
+
+        .reset-button:active {
+            transform: scale(0.98);
+        }
+
         /* Game Overlay Styling */
         .game-overlay {
             position: absolute;
@@ -137,6 +162,8 @@
         <!-- Scoreboard -->
         <div class="scoreboard">
             <div id="score-p1" class="player-info">P1 (Red): 0</div>
+            <!-- Reset Button -->
+            <button id="resetButton" class="reset-button">RESET GAME</button> 
             <div id="score-p2" class="player-info">P2 (Blue): 0</div>
         </div>
 
@@ -147,7 +174,9 @@
         <div class="controls-info">
             <p><strong>Player 1 (Red):</strong> Move (W, A, S, D), **Dash (Left Shift)**.</p>
             <p><strong>Player 2 (Blue):</strong> Move (Arrows), **Dash (Right Control)**.</p>
-            <p>Press **ESC** to Pause/Resume. (The game now runs indefinitely!)</p>
+            <p>Dashing into an opponent will briefly **Stun** them!</p>
+            <p>**Goalie Zone** (near your goal) and **Powerups** give speed boosts.</p>
+            <p>Press **ESC** to Pause/Resume.</p>
         </div>
     </div>
 
@@ -159,8 +188,7 @@
         const overlayTitle = document.getElementById('overlayTitle');
         const overlayMessage = document.getElementById('overlayMessage');
         const overlayScore = document.getElementById('overlayScore');
-        // Removed: timerDisplay variable
-
+        
         // Dimensions
         const COURT_WIDTH = 800; // Fixed internal logic size
         const COURT_HEIGHT = 500;
@@ -171,22 +199,38 @@
 
         // Game Timing Constants
         const FPS = 60;
-        const frameTime = 1000 / FPS;
         const PAUSE_KEY = 'Escape';
 
-        // Dash Constants
+        // Dash and Stun Constants
         const DASH_SPEED_MULTIPLIER = 2.5;
         const DASH_DURATION_FRAMES = 15; // 0.25 seconds
         const DASH_COOLDOWN_FRAMES = 180; // 3 seconds
+        const STUN_DURATION_FRAMES = 30; // 0.5 seconds
+
+        // NEW: Powerup Constants
+        const POWERUP_RADIUS = 15;
+        const POWERUP_DURATION_FRAMES = 300; // 5 seconds
+        const POWERUP_SPAWN_COOLDOWN = 600; // 10 seconds before next spawn attempt
+
+        // NEW: Goalie Zone Constants
+        const GOALIE_ZONE_DEPTH = 150; 
+        const GOALIE_SPEED_BONUS = 2; // +2 to speed when in zone
 
         // Game State
         let score = { p1: 0, p2: 0 };
         let isGameRunning = false;
         let isPaused = false;
-        // Removed: timeRemaining variable
         let lastTime = 0;
+        let lastTouchedBy = null; // Tracks player object that last hit the ball
 
-        // Player Factory (to easily create player objects with dash properties)
+        let powerup = { // New powerup object
+            x: 0, y: 0,
+            active: false,
+            durationTimer: 0,
+            spawnTimer: 0
+        };
+
+        // Player Factory 
         const createPlayer = (x, y, color, keys, dashKey, isP1) => ({
             x, y,
             radius: PLAYER_RADIUS,
@@ -199,6 +243,8 @@
             dashKey,
             dashTimer: 0,
             cooldownTimer: 0,
+            stunTimer: 0,
+            boostTimer: 0, // NEW: Boost timer
             isP1
         });
 
@@ -223,7 +269,7 @@
             vx: 0,
             vy: 0,
             friction: 0.99,
-            maxSpeed: 10
+            maxSpeed: 15 // Increased max speed for faster shots
         };
 
         // Input
@@ -236,6 +282,9 @@
         // Simple Sound Generator (Beep)
         function playBeep(frequency = 440, duration = 0.1, volume = 0.5) {
             if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
 
@@ -255,20 +304,20 @@
             // Event listeners for input
             window.addEventListener('keydown', (e) => { 
                 keysPressed[e.key] = true; 
-                // Handle Pause
                 if (e.key === PAUSE_KEY) {
                     togglePause();
                 }
             });
             window.addEventListener('keyup', (e) => { keysPressed[e.key] = false; });
             
-            // Start the game loop
+            // Reset Button Listener
+            document.getElementById('resetButton').addEventListener('click', resetGame);
+            
             isGameRunning = true;
             requestAnimationFrame(gameLoop);
         }
 
         function togglePause() {
-            // Removed: timeRemaining check
             isPaused = !isPaused;
             if (isPaused) {
                 overlayTitle.textContent = "PAUSED";
@@ -278,30 +327,44 @@
                 playBeep(220, 0.2, 0.5);
             } else {
                 overlay.style.display = 'none';
-                lastTime = performance.now(); // Reset lastTime to prevent huge delta on resume
+                lastTime = performance.now();
             }
         }
         
-        function endGame() {
-            // This function is no longer called automatically, but kept for manual triggering if needed.
-            isGameRunning = false;
-            let winner = 'TIE!';
-            let winnerColor = '#fcd34d'; // Yellow
+        function resetGame() {
+            score = { p1: 0, p2: 0 };
+            lastTouchedBy = null;
+            isPaused = false;
+            isGameRunning = true;
             
-            if (score.p1 > score.p2) {
-                winner = 'Player 1 (Red) WINS!';
-                winnerColor = player1.baseColor;
-            } else if (score.p2 > score.p1) {
-                winner = 'Player 2 (Blue) WINS!';
-                winnerColor = player2.baseColor;
+            // Clear powerup
+            powerup.active = false;
+            powerup.spawnTimer = 0;
+            
+            // Reset players and ball position
+            resetBall(null); 
+            
+            // Clear any active effects
+            player1.stunTimer = 0;
+            player2.stunTimer = 0;
+            player1.dashTimer = 0;
+            player2.dashTimer = 0;
+            player1.cooldownTimer = 0;
+            player2.cooldownTimer = 0;
+            player1.boostTimer = 0;
+            player2.boostTimer = 0;
+            player1.color = player1.baseColor;
+            player2.color = player2.baseColor;
+
+            overlay.style.display = 'none';
+            
+            updateScoreboard();
+            playBeep(440, 0.3, 0.7);
+            
+            if (isGameRunning) {
+                lastTime = performance.now();
+                requestAnimationFrame(gameLoop);
             }
-            
-            overlayTitle.textContent = "GAME OVER";
-            overlayTitle.style.color = winnerColor;
-            overlayMessage.textContent = winner;
-            overlayScore.textContent = `Final Score: Red ${score.p1} - ${score.p2} Blue`;
-            overlay.style.display = 'flex';
-            playBeep(100, 1.0, 0.9); // Low, long tone for end game
         }
 
         function resetBall(scorer) {
@@ -329,15 +392,17 @@
             document.getElementById('score-p1').textContent = `P1 (Red): ${score.p1}`;
             document.getElementById('score-p2').textContent = `P2 (Blue): ${score.p2}`;
         }
-        
-        // Removed: formatTime function
-        // Removed: updateTimer function
 
 
         // --- Drawing ---
 
         function drawCourt() {
-            // Center Line and Circle (as before)
+            // Draw Goalie Zones (visual aid)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillRect(0, 0, GOALIE_ZONE_DEPTH, COURT_HEIGHT); // Left Zone
+            ctx.fillRect(COURT_WIDTH - GOALIE_ZONE_DEPTH, 0, GOALIE_ZONE_DEPTH, COURT_HEIGHT); // Right Zone
+            
+            // Center Line and Circle
             ctx.beginPath();
             ctx.moveTo(COURT_WIDTH / 2, 0);
             ctx.lineTo(COURT_WIDTH / 2, COURT_HEIGHT);
@@ -367,6 +432,39 @@
             ctx.rect(COURT_WIDTH - 105, COURT_HEIGHT / 2 - GOAL_HEIGHT / 2 - 5, 100, GOAL_HEIGHT + 10);
             ctx.stroke();
         }
+        
+        // Draw possession indicator
+        function drawPossessionIndicator(player) {
+            if (lastTouchedBy === player) {
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius + 8, 0, Math.PI * 2);
+                ctx.strokeStyle = '#fcd34d'; // Yellow/Gold color for possession
+                ctx.lineWidth = 4;
+                ctx.setLineDash([5, 5]); // Shimmer effect
+                ctx.stroke();
+                ctx.setLineDash([]); // Reset line dash
+                ctx.closePath();
+            }
+        }
+        
+        // NEW: Draw Powerup
+        function drawPowerup() {
+            if (!powerup.active) return;
+            
+            ctx.beginPath();
+            ctx.arc(powerup.x, powerup.y, POWERUP_RADIUS, 0, Math.PI * 2);
+            
+            // Pulsing color effect
+            ctx.fillStyle = powerup.durationTimer % 20 < 10 ? '#ffff00' : '#ffa500'; 
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = ctx.fillStyle;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.closePath();
+        }
 
         function drawGoal(x, color) {
             ctx.fillStyle = color;
@@ -376,9 +474,9 @@
         function drawPlayer(player) {
             ctx.beginPath();
             ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-            // Use the current color (which flashes during dash)
+            // Use the current color (which flashes during dash/stun/boost/goalie)
             ctx.fillStyle = player.color; 
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = player.dashTimer > 0 || player.stunTimer > 0 || player.boostTimer > 0 ? 15 : 10;
             ctx.shadowColor = player.color;
             ctx.fill();
             ctx.shadowBlur = 0;
@@ -418,14 +516,19 @@
             // Clear canvas
             ctx.clearRect(0, 0, COURT_WIDTH, COURT_HEIGHT);
 
-            // 1. Draw Court Markings
+            // 1. Draw Court Markings and Zones
             drawCourt();
 
             // 2. Draw Goals
             drawGoal(0, '#880000'); // Left (P1 goal)
             drawGoal(COURT_WIDTH - GOAL_WIDTH, '#000088'); // Right (P2 goal)
 
-            // 3. Draw Players and Ball
+            // 3. Draw Powerup
+            drawPowerup();
+
+            // 4. Draw Players, Possession, and Ball
+            drawPossessionIndicator(player1);
+            drawPossessionIndicator(player2);
             drawPlayer(player1);
             drawPlayer(player2);
             drawBall();
@@ -434,7 +537,43 @@
         // --- Logic ---
         
         function updatePlayerState(player) {
-            // Handle Dash Cooldown and Duration
+            // 1. Handle Stun Timer
+            if (player.stunTimer > 0) {
+                player.stunTimer--;
+                player.color = player.stunTimer % 4 < 2 ? '#ffffff' : player.baseColor; // Flashing stun effect
+                player.speed = 0; // Stunned players cannot move
+                return; // Stop any further movement or dash checks
+            }
+            
+            // 2. Handle Boost Timer
+            let currentBaseSpeed = 5; // Default speed
+            if (player.boostTimer > 0) {
+                player.boostTimer--;
+                currentBaseSpeed = 7; // Boosted speed
+                player.color = player.boostTimer % 20 < 10 ? '#00ff00' : player.baseColor; // Green flash
+            } else {
+                player.color = player.baseColor; // Reset if boost runs out
+            }
+            
+            // 3. Apply Goalie Zone Speed Boost (overrides color, but keeps speed if dashing)
+            let inGoalieZone = false;
+            if (player.isP1 && player.x < GOALIE_ZONE_DEPTH) {
+                inGoalieZone = true;
+            } else if (!player.isP1 && player.x > COURT_WIDTH - GOALIE_ZONE_DEPTH) {
+                inGoalieZone = true;
+            }
+            
+            if (inGoalieZone) {
+                player.speed = currentBaseSpeed + GOALIE_SPEED_BONUS;
+                // Subtle color change for Goalie Zone
+                const zoneColor = player.isP1 ? '#ffaaaa' : '#aaaaff'; 
+                player.color = zoneColor; 
+            } else {
+                player.speed = currentBaseSpeed; // Restore normal speed/boosted speed
+            }
+
+
+            // 4. Handle Dash Cooldown and Duration
             if (player.cooldownTimer > 0) player.cooldownTimer--;
 
             // Check for Dash Activation
@@ -444,19 +583,18 @@
                 playBeep(880, 0.05, 0.7); // Dash sound
             }
 
-            // Apply Dash Speed/Visuals
+            // Apply Dash Speed/Visuals (overrides zone speed/color)
             if (player.dashTimer > 0) {
-                player.speed = 5 * DASH_SPEED_MULTIPLIER;
+                player.speed = currentBaseSpeed * DASH_SPEED_MULTIPLIER;
                 player.dashTimer--;
                 // Flashing effect during dash
                 player.color = player.dashTimer % 4 < 2 ? player.baseColor : '#ffffff'; 
-            } else {
-                player.speed = 5;
-                player.color = player.baseColor; 
-            }
+            } 
         }
 
         function handleInput(player) {
+            if (player.stunTimer > 0) return; // Ignore input if stunned
+
             player.vx = 0;
             player.vy = 0;
             let moved = false;
@@ -494,6 +632,100 @@
             // Vertical boundary (Court walls)
             player.y = Math.max(minY, Math.min(maxY, player.y));
         }
+        
+        // Player vs Player Collision (Stun Logic)
+        function checkPlayerCollision(p1, p2) {
+            const dx = p1.x - p2.x;
+            const dy = p1.y - p2.y;
+            const distanceSquared = dx * dx + dy * dy;
+            const minDistance = p1.radius + p2.radius;
+            const minDistanceSquared = minDistance * minDistance;
+
+            if (distanceSquared < minDistanceSquared) {
+                // Collision detected: Resolve overlap first
+                const distance = Math.sqrt(distanceSquared);
+                const overlap = minDistance - distance;
+                const normalX = dx / distance;
+                const normalY = dy / distance;
+
+                p1.x += normalX * overlap / 2;
+                p1.y += normalY * overlap / 2;
+                p2.x -= normalX * overlap / 2;
+                p2.y -= normalY * overlap / 2;
+                
+                // Stun/Knockback Logic
+                const p1IsDashing = p1.dashTimer > 0;
+                const p2IsDashing = p2.dashTimer > 0;
+                
+                if (p1IsDashing && !p2IsDashing) {
+                    // P1 hits P2 while dashing: P2 gets stunned
+                    p2.stunTimer = STUN_DURATION_FRAMES;
+                    playBeep(150, 0.3, 0.9); // Low stun sound
+                } else if (p2IsDashing && !p1IsDashing) {
+                    // P2 hits P1 while dashing: P1 gets stunned
+                    p1.stunTimer = STUN_DURATION_FRAMES;
+                    playBeep(150, 0.3, 0.9); // Low stun sound
+                } else if (p1IsDashing && p2IsDashing) {
+                    // Both dashing: minor stun/clash effect for both
+                    p1.stunTimer = Math.floor(STUN_DURATION_FRAMES / 2);
+                    p2.stunTimer = Math.floor(STUN_DURATION_FRAMES / 2);
+                    playBeep(500, 0.1, 0.5); // Quick clash sound
+                }
+            }
+        }
+
+        // NEW: Powerup Logic
+        function spawnPowerup() {
+            if (powerup.active || isPaused) return;
+
+            if (powerup.spawnTimer > 0) {
+                powerup.spawnTimer--;
+                return;
+            }
+
+            // Attempt to spawn powerup after cooldown
+            if (Math.random() < 0.005) { // 0.5% chance per frame (every 10 seconds average)
+                // Spawn powerup in the center area, away from goal zones
+                powerup.x = Math.random() * (COURT_WIDTH - 2 * GOALIE_ZONE_DEPTH) + GOALIE_ZONE_DEPTH; 
+                powerup.y = Math.random() * (COURT_HEIGHT - 2 * POWERUP_RADIUS - 50) + 25;
+                powerup.active = true;
+                powerup.durationTimer = POWERUP_DURATION_FRAMES;
+                powerup.spawnTimer = 0; // Clear timer, duration timer handles despawn
+                playBeep(1000, 0.1, 0.4); // Powerup spawn sound
+            }
+        }
+        
+        function updatePowerup() {
+            if (powerup.active) {
+                powerup.durationTimer--;
+                if (powerup.durationTimer <= 0) {
+                    powerup.active = false;
+                    powerup.spawnTimer = POWERUP_SPAWN_COOLDOWN; // Start cooldown after despawn
+                    playBeep(100, 0.1, 0.3); // Despawn sound
+                }
+            } else if (powerup.spawnTimer > 0) {
+                 powerup.spawnTimer--;
+            }
+        }
+
+        function checkPowerupCollection(player) {
+            if (!powerup.active) return;
+
+            const dx = player.x - powerup.x;
+            const dy = player.y - powerup.y;
+            const distanceSquared = dx * dx + dy * dy;
+            const minDistance = player.radius + POWERUP_RADIUS;
+
+            if (distanceSquared < minDistance * minDistance) {
+                // Collected! Grant boost and reset powerup
+                player.boostTimer += POWERUP_DURATION_FRAMES;
+                powerup.active = false;
+                powerup.spawnTimer = POWERUP_SPAWN_COOLDOWN; // Start cooldown
+                powerup.durationTimer = 0;
+                playBeep(1200, 0.2, 0.9); // Collection sound
+            }
+        }
+
 
         function updateBall() {
             // 1. Apply friction and move
@@ -533,6 +765,9 @@
 
             if (distanceSquared < minDistanceSquared) {
                 playBeep(350, 0.08, 0.6);
+                
+                // Update possession
+                lastTouchedBy = player;
 
                 // Calculate the overlap
                 const distance = Math.sqrt(distanceSquared);
@@ -548,17 +783,21 @@
 
                 // Calculate the push vector based on player's current speed
                 const playerMovementSpeed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
-                // Push strength is scaled by the player's current speed, especially high if dashing
-                let pushStrength = 1.0 + (playerMovementSpeed / 5); 
                 
-                // If dashing, make the push much stronger
+                // Base push strength (higher base for more aggressive play)
+                let pushStrength = 4.0; 
+                
+                // If dashing, apply a large multiplier (aggressive hits)
                 if (player.dashTimer > 0) {
-                    pushStrength *= 1.5;
+                    pushStrength *= 2.5; 
+                } else if (playerMovementSpeed > 0) {
+                    // Small bonus based on player's current non-dash movement
+                    pushStrength += (playerMovementSpeed / player.speed) * 3;
                 }
 
                 // Apply new velocity to the ball (elastic collision approximation)
-                ball.vx = normalX * pushStrength * 8;
-                ball.vy = normalY * pushStrength * 8;
+                ball.vx = normalX * pushStrength;
+                ball.vy = normalY * pushStrength;
             }
         }
 
@@ -573,6 +812,7 @@
                 updateScoreboard();
                 resetBall(player2);
                 playBeep(600, 0.5, 0.8); 
+                lastTouchedBy = null; // Clear possession on score
                 return true;
             }
 
@@ -582,6 +822,7 @@
                 updateScoreboard();
                 resetBall(player1);
                 playBeep(600, 0.5, 0.8); 
+                lastTouchedBy = null; // Clear possession on score
                 return true;
             }
             return false;
@@ -596,7 +837,7 @@
             
             // Only update game state if not paused
             if (!isPaused) {
-                // 1. Update Player States (Dash cooldown/duration)
+                // 1. Update Player States (Dash cooldown/duration/stun/boost/goalie speed)
                 updatePlayerState(player1);
                 updatePlayerState(player2);
 
@@ -604,20 +845,25 @@
                 handleInput(player1);
                 handleInput(player2);
 
-                // 3. Update Ball Position and Physics
+                // 3. Powerup Management
+                spawnPowerup();
+                updatePowerup();
+
+                // 4. Update Ball Position and Physics
                 updateBall();
 
-                // 4. Collision Checks
+                // 5. Collision Checks
                 checkBallPlayerCollision(player1);
                 checkBallPlayerCollision(player2);
+                checkPlayerCollision(player1, player2); // Player vs Player stun check
+                checkPowerupCollection(player1); // Check for powerup collection
+                checkPowerupCollection(player2);
 
-                // 5. Goal Check
+                // 6. Goal Check
                 checkGoal();
-
-                // Removed: updateTimer(deltaTime) call
             }
 
-            // 6. Draw Everything (even if paused, to show the static paused screen)
+            // 7. Draw Everything
             drawGame();
 
             lastTime = currentTime;
@@ -628,19 +874,7 @@
 
         // Start the game on window load
         window.onload = function() {
-            // Set up the responsive canvas size based on parent container
-            const container = document.querySelector('.game-container');
-            const aspectRatio = COURT_WIDTH / COURT_HEIGHT;
-            let w = container.clientWidth * 0.9;
-            let h = w / aspectRatio;
-
-            if (h > window.innerHeight * 0.8) {
-                h = window.innerHeight * 0.8;
-                w = h * aspectRatio;
-            }
-            
-            // Ensure canvas is set to the logical dimensions for drawing, 
-            // the CSS will handle the visible scaling.
+            // Set up the canvas size (using logical size 800x500 for internal math)
             canvas.width = COURT_WIDTH; 
             canvas.height = COURT_HEIGHT; 
             
