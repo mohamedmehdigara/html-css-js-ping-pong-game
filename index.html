@@ -65,7 +65,7 @@
             min-width: 150px;
             box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
             transition: background-color 0.3s;
-            font-size: 1.5rem; /* Reduced font size to accommodate button */
+            font-size: 1.5rem; 
         }
 
         #score-p1 { background-color: #ef4444; } /* Red */
@@ -123,7 +123,7 @@
             backdrop-filter: blur(5px);
             border-radius: 20px;
             z-index: 10;
-            pointer-events: none; /* Allows clicks to pass through if not visible */
+            pointer-events: none;
         }
         
         .overlay-content {
@@ -172,11 +172,10 @@
 
         <!-- Controls Information -->
         <div class="controls-info">
-            <p><strong>Player 1 (Red):</strong> Move (W, A, S, D), **Dash (Left Shift)**.</p>
-            <p><strong>Player 2 (Blue):</strong> Move (Arrows), **Dash (Right Control)**.</p>
-            <p>Dashing into an opponent will briefly **Stun** them!</p>
-            <p>**Goalie Zone** (near your goal) and **Powerups** give speed boosts.</p>
-            <p>Press **ESC** to Pause/Resume.</p>
+            <p><strong>Player 1 (Red):</strong> Move (W, A, S, D), **Dash (Left Shift)**, **Shield (X)**, **Super Shot (Z)**.</p>
+            <p><strong>Player 2 (Blue):</strong> Move (Arrows), **Dash (Right Control)**, **Shield (9)**, **Super Shot (0)**.</p>
+            <p>Dashing into an opponent will briefly **Stun** them. **Shield** prevents stun/knockback.</p>
+            <p>Super Shot meter charges on hit. Press **ESC** to Pause/Resume.</p>
         </div>
     </div>
 
@@ -207,14 +206,28 @@
         const DASH_COOLDOWN_FRAMES = 180; // 3 seconds
         const STUN_DURATION_FRAMES = 30; // 0.5 seconds
 
-        // NEW: Powerup Constants
+        // Powerup Constants
         const POWERUP_RADIUS = 15;
         const POWERUP_DURATION_FRAMES = 300; // 5 seconds
         const POWERUP_SPAWN_COOLDOWN = 600; // 10 seconds before next spawn attempt
 
-        // NEW: Goalie Zone Constants
+        // Goalie Zone Constants
         const GOALIE_ZONE_DEPTH = 150; 
         const GOALIE_SPEED_BONUS = 2; // +2 to speed when in zone
+        
+        // NEW: Super Shot Constants
+        const SS_MAX_METER = 100;
+        const SS_CHARGE_PER_HIT = 5; // Charge 5 points per hit
+        const SS_SHOT_MULTIPLIER = 30; // Max velocity of 30, much faster than maxSpeed
+        
+        // NEW: Shield Constants
+        const SHIELD_DURATION_FRAMES = 60; // 1 second
+        const SHIELD_COOLDOWN_FRAMES = 360; // 6 seconds
+
+        // NEW: Screen Shake Constants
+        let shakeDuration = 0;
+        const SHAKE_DURATION_FRAMES = 30; // 0.5 seconds
+        const SHAKE_INTENSITY = 8; // Max shake displacement in pixels
 
         // Game State
         let score = { p1: 0, p2: 0 };
@@ -223,7 +236,7 @@
         let lastTime = 0;
         let lastTouchedBy = null; // Tracks player object that last hit the ball
 
-        let powerup = { // New powerup object
+        let powerup = { 
             x: 0, y: 0,
             active: false,
             durationTimer: 0,
@@ -231,7 +244,7 @@
         };
 
         // Player Factory 
-        const createPlayer = (x, y, color, keys, dashKey, isP1) => ({
+        const createPlayer = (x, y, color, keys, dashKey, shieldKey, ssKey, isP1) => ({
             x, y,
             radius: PLAYER_RADIUS,
             color,
@@ -241,10 +254,16 @@
             vy: 0,
             keys,
             dashKey,
+            shieldKey,          // NEW
+            ssKey,              // NEW
             dashTimer: 0,
             cooldownTimer: 0,
             stunTimer: 0,
-            boostTimer: 0, // NEW: Boost timer
+            boostTimer: 0, 
+            shieldTimer: 0,     // NEW
+            shieldCooldown: 0,  // NEW
+            ssMeter: 0,         // NEW
+            ssActive: false,    // NEW - true for one frame after pressing SS key
             isP1
         });
 
@@ -252,13 +271,13 @@
         let player1 = createPlayer(
             COURT_WIDTH * 0.25, COURT_HEIGHT / 2, '#ef4444', 
             { up: 'w', down: 's', left: 'a', right: 'd' }, 
-            'Shift', true
+            'Shift', 'x', 'z', true // dashKey, shieldKey, ssKey
         );
 
         let player2 = createPlayer(
             COURT_WIDTH * 0.75, COURT_HEIGHT / 2, '#3b82f6', 
             { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' }, 
-            'Control', false
+            'Control', '9', '0', false // dashKey, shieldKey, ssKey
         );
 
         let ball = {
@@ -269,7 +288,7 @@
             vx: 0,
             vy: 0,
             friction: 0.99,
-            maxSpeed: 15 // Increased max speed for faster shots
+            maxSpeed: 15 
         };
 
         // Input
@@ -308,7 +327,12 @@
                     togglePause();
                 }
             });
-            window.addEventListener('keyup', (e) => { keysPressed[e.key] = false; });
+            window.addEventListener('keyup', (e) => { 
+                keysPressed[e.key] = false; 
+                // Ensure Super Shot key is only registered once per press
+                if (e.key.toLowerCase() === player1.ssKey.toLowerCase()) player1.ssActive = false;
+                if (e.key === player2.ssKey) player2.ssActive = false;
+            });
             
             // Reset Button Listener
             document.getElementById('resetButton').addEventListener('click', resetGame);
@@ -336,6 +360,7 @@
             lastTouchedBy = null;
             isPaused = false;
             isGameRunning = true;
+            shakeDuration = 0;
             
             // Clear powerup
             powerup.active = false;
@@ -344,17 +369,18 @@
             // Reset players and ball position
             resetBall(null); 
             
-            // Clear any active effects
-            player1.stunTimer = 0;
-            player2.stunTimer = 0;
-            player1.dashTimer = 0;
-            player2.dashTimer = 0;
-            player1.cooldownTimer = 0;
-            player2.cooldownTimer = 0;
-            player1.boostTimer = 0;
-            player2.boostTimer = 0;
-            player1.color = player1.baseColor;
-            player2.color = player2.baseColor;
+            // Clear all active effects
+            [player1, player2].forEach(p => {
+                p.stunTimer = 0;
+                p.dashTimer = 0;
+                p.cooldownTimer = 0;
+                p.boostTimer = 0;
+                p.shieldTimer = 0;
+                p.shieldCooldown = 0;
+                p.ssMeter = 0;
+                p.ssActive = false;
+                p.color = p.baseColor;
+            });
 
             overlay.style.display = 'none';
             
@@ -447,7 +473,7 @@
             }
         }
         
-        // NEW: Draw Powerup
+        // Draw Powerup
         function drawPowerup() {
             if (!powerup.active) return;
             
@@ -472,9 +498,22 @@
         }
 
         function drawPlayer(player) {
+            // Draw Shield effect first if active
+            if (player.shieldTimer > 0) {
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, player.radius + 5, 0, Math.PI * 2);
+                ctx.strokeStyle = '#00aaff'; // Cyan blue shield
+                ctx.lineWidth = 8;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#00aaff';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.closePath();
+            }
+
+            // Draw Player body
             ctx.beginPath();
             ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-            // Use the current color (which flashes during dash/stun/boost/goalie)
             ctx.fillStyle = player.color; 
             ctx.shadowBlur = player.dashTimer > 0 || player.stunTimer > 0 || player.boostTimer > 0 ? 15 : 10;
             ctx.shadowColor = player.color;
@@ -485,7 +524,28 @@
             ctx.stroke();
             ctx.closePath();
             
-            // Draw Cooldown indicator
+            // Draw Super Shot Meter above player
+            const meterY = player.y - player.radius - 15;
+            const meterWidth = 40;
+            const meterHeight = 8;
+            const meterX = player.x - meterWidth / 2;
+            
+            // Draw empty bar
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(meterX, meterY, meterWidth, meterHeight);
+            
+            // Draw charged bar
+            const charge = player.ssMeter / SS_MAX_METER;
+            const chargedWidth = meterWidth * charge;
+            ctx.fillStyle = charge === 1 ? '#ffcc00' : '#888800'; // Yellow if full, Gold if active
+            ctx.fillRect(meterX, meterY, chargedWidth, meterHeight);
+            
+            // Draw bar outline
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(meterX, meterY, meterWidth, meterHeight);
+
+            // Draw Cooldown indicator (Dash)
             if (player.cooldownTimer > 0) {
                 ctx.beginPath();
                 const progress = player.cooldownTimer / DASH_COOLDOWN_FRAMES;
@@ -493,6 +553,18 @@
                 const endAngle = startAngle + (2 * Math.PI * progress);
                 ctx.arc(player.x, player.y, player.radius + 5, startAngle, endAngle);
                 ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            
+            // Draw Cooldown indicator (Shield)
+            if (player.shieldCooldown > 0) {
+                ctx.beginPath();
+                const progress = player.shieldCooldown / SHIELD_COOLDOWN_FRAMES;
+                const startAngle = -Math.PI / 2;
+                const endAngle = startAngle + (2 * Math.PI * progress);
+                ctx.arc(player.x, player.y, player.radius + 5, -Math.PI / 2 - Math.PI / 4, -Math.PI / 2 + Math.PI / 4); // Draw only top left/right arc
+                ctx.strokeStyle = '#00aaff';
                 ctx.lineWidth = 2;
                 ctx.stroke();
             }
@@ -537,7 +609,13 @@
         // --- Logic ---
         
         function updatePlayerState(player) {
-            // 1. Handle Stun Timer
+            // 0. Handle Shield Timers
+            if (player.shieldCooldown > 0) player.shieldCooldown--;
+            if (player.shieldTimer > 0) {
+                player.shieldTimer--;
+            }
+
+            // 1. Handle Stun Timer (MUST run first, as it overrides movement)
             if (player.stunTimer > 0) {
                 player.stunTimer--;
                 player.color = player.stunTimer % 4 < 2 ? '#ffffff' : player.baseColor; // Flashing stun effect
@@ -590,10 +668,33 @@
                 // Flashing effect during dash
                 player.color = player.dashTimer % 4 < 2 ? player.baseColor : '#ffffff'; 
             } 
+            
+            // NEW: Handle Super Shot activation
+            if (keysPressed[player.ssKey] && player.ssMeter >= SS_MAX_METER && !player.ssActive) {
+                player.ssActive = true;
+                playBeep(1500, 0.1, 1.0); // High pitch activation sound
+            }
+            
+            // NEW: Handle Shield activation
+            if (keysPressed[player.shieldKey] && player.shieldCooldown === 0) {
+                player.shieldTimer = SHIELD_DURATION_FRAMES;
+                player.shieldCooldown = SHIELD_COOLDOWN_FRAMES;
+                playBeep(100, 0.1, 0.5); // Low shield activation sound
+            }
         }
 
         function handleInput(player) {
-            if (player.stunTimer > 0) return; // Ignore input if stunned
+            // Player is stunned OR shielded, ignore movement input but allow SS/Shield activation 
+            if (player.stunTimer > 0 || player.shieldTimer > 0) {
+                player.vx = 0;
+                player.vy = 0;
+                // If shielded, freeze velocity for maximum defensive stability
+                if (player.shieldTimer > 0) {
+                    // Prevent movement entirely but allow player to block overlap
+                } else {
+                     return; // If stunned and not shielded, skip movement entirely
+                }
+            }
 
             player.vx = 0;
             player.vy = 0;
@@ -656,25 +757,28 @@
                 // Stun/Knockback Logic
                 const p1IsDashing = p1.dashTimer > 0;
                 const p2IsDashing = p2.dashTimer > 0;
+                const p1IsShielded = p1.shieldTimer > 0; // NEW
+                const p2IsShielded = p2.shieldTimer > 0; // NEW
                 
-                if (p1IsDashing && !p2IsDashing) {
+                // If a player is shielded, they cannot be stunned, but they can still stun others if dashing
+                if (p1IsDashing && !p2IsShielded) {
                     // P1 hits P2 while dashing: P2 gets stunned
                     p2.stunTimer = STUN_DURATION_FRAMES;
-                    playBeep(150, 0.3, 0.9); // Low stun sound
-                } else if (p2IsDashing && !p1IsDashing) {
+                    playBeep(150, 0.3, 0.9); 
+                } else if (p2IsDashing && !p1IsShielded) {
                     // P2 hits P1 while dashing: P1 gets stunned
                     p1.stunTimer = STUN_DURATION_FRAMES;
-                    playBeep(150, 0.3, 0.9); // Low stun sound
+                    playBeep(150, 0.3, 0.9); 
                 } else if (p1IsDashing && p2IsDashing) {
-                    // Both dashing: minor stun/clash effect for both
-                    p1.stunTimer = Math.floor(STUN_DURATION_FRAMES / 2);
-                    p2.stunTimer = Math.floor(STUN_DURATION_FRAMES / 2);
-                    playBeep(500, 0.1, 0.5); // Quick clash sound
+                    // Both dashing: minor stun/clash effect for the *unshielded* one(s)
+                    if (!p1IsShielded) p1.stunTimer = Math.floor(STUN_DURATION_FRAMES / 2);
+                    if (!p2IsShielded) p2.stunTimer = Math.floor(STUN_DURATION_FRAMES / 2);
+                    playBeep(500, 0.1, 0.5); 
                 }
             }
         }
 
-        // NEW: Powerup Logic
+        // Powerup Logic (Kept from previous version)
         function spawnPowerup() {
             if (powerup.active || isPaused) return;
 
@@ -684,14 +788,14 @@
             }
 
             // Attempt to spawn powerup after cooldown
-            if (Math.random() < 0.005) { // 0.5% chance per frame (every 10 seconds average)
+            if (Math.random() < 0.005) { 
                 // Spawn powerup in the center area, away from goal zones
                 powerup.x = Math.random() * (COURT_WIDTH - 2 * GOALIE_ZONE_DEPTH) + GOALIE_ZONE_DEPTH; 
                 powerup.y = Math.random() * (COURT_HEIGHT - 2 * POWERUP_RADIUS - 50) + 25;
                 powerup.active = true;
                 powerup.durationTimer = POWERUP_DURATION_FRAMES;
-                powerup.spawnTimer = 0; // Clear timer, duration timer handles despawn
-                playBeep(1000, 0.1, 0.4); // Powerup spawn sound
+                powerup.spawnTimer = 0; 
+                playBeep(1000, 0.1, 0.4); 
             }
         }
         
@@ -700,8 +804,8 @@
                 powerup.durationTimer--;
                 if (powerup.durationTimer <= 0) {
                     powerup.active = false;
-                    powerup.spawnTimer = POWERUP_SPAWN_COOLDOWN; // Start cooldown after despawn
-                    playBeep(100, 0.1, 0.3); // Despawn sound
+                    powerup.spawnTimer = POWERUP_SPAWN_COOLDOWN; 
+                    playBeep(100, 0.1, 0.3); 
                 }
             } else if (powerup.spawnTimer > 0) {
                  powerup.spawnTimer--;
@@ -720,9 +824,9 @@
                 // Collected! Grant boost and reset powerup
                 player.boostTimer += POWERUP_DURATION_FRAMES;
                 powerup.active = false;
-                powerup.spawnTimer = POWERUP_SPAWN_COOLDOWN; // Start cooldown
+                powerup.spawnTimer = POWERUP_SPAWN_COOLDOWN; 
                 powerup.durationTimer = 0;
-                playBeep(1200, 0.2, 0.9); // Collection sound
+                playBeep(1200, 0.2, 0.9); 
             }
         }
 
@@ -766,8 +870,9 @@
             if (distanceSquared < minDistanceSquared) {
                 playBeep(350, 0.08, 0.6);
                 
-                // Update possession
+                // Update possession and charge Super Shot
                 lastTouchedBy = player;
+                player.ssMeter = Math.min(SS_MAX_METER, player.ssMeter + SS_CHARGE_PER_HIT);
 
                 // Calculate the overlap
                 const distance = Math.sqrt(distanceSquared);
@@ -787,12 +892,25 @@
                 // Base push strength (higher base for more aggressive play)
                 let pushStrength = 4.0; 
                 
-                // If dashing, apply a large multiplier (aggressive hits)
+                // Apply modifiers
                 if (player.dashTimer > 0) {
                     pushStrength *= 2.5; 
                 } else if (playerMovementSpeed > 0) {
-                    // Small bonus based on player's current non-dash movement
                     pushStrength += (playerMovementSpeed / player.speed) * 3;
+                }
+                
+                // NEW: Super Shot Logic
+                if (player.ssActive) {
+                    pushStrength = SS_SHOT_MULTIPLIER;
+                    player.ssMeter = 0; // Drain meter
+                    player.ssActive = false; // Deactivate shot
+                    playBeep(2000, 0.3, 1.0); // Extreme shot sound
+                }
+
+                // NEW: Shield Logic (makes player act like a rigid wall, deflecting)
+                if (player.shieldTimer > 0) {
+                    // Shield hit is purely defensive, medium strength, no movement bonus
+                    pushStrength = 8.0; 
                 }
 
                 // Apply new velocity to the ball (elastic collision approximation)
@@ -805,27 +923,29 @@
         function checkGoal() {
             const goalTop = COURT_HEIGHT / 2 - GOAL_HEIGHT / 2;
             const goalBottom = COURT_HEIGHT / 2 + GOAL_HEIGHT / 2;
+            let goalScored = false;
 
             // Left Goal (Player 2 scores)
             if (ball.x - ball.radius <= GOAL_WIDTH && ball.y > goalTop && ball.y < goalBottom) {
                 score.p2++;
-                updateScoreboard();
                 resetBall(player2);
-                playBeep(600, 0.5, 0.8); 
-                lastTouchedBy = null; // Clear possession on score
-                return true;
+                goalScored = true;
             }
 
             // Right Goal (Player 1 scores)
             if (ball.x + ball.radius >= COURT_WIDTH - GOAL_WIDTH && ball.y > goalTop && ball.y < goalBottom) {
                 score.p1++;
-                updateScoreboard();
                 resetBall(player1);
-                playBeep(600, 0.5, 0.8); 
-                lastTouchedBy = null; // Clear possession on score
-                return true;
+                goalScored = true;
             }
-            return false;
+
+            if (goalScored) {
+                updateScoreboard();
+                shakeDuration = SHAKE_DURATION_FRAMES; // NEW: Activate screen shake
+                playBeep(600, 0.5, 0.8); 
+                lastTouchedBy = null; 
+            }
+            return goalScored;
         }
 
 
@@ -833,11 +953,20 @@
         function gameLoop(currentTime) {
             if (!isGameRunning) return;
 
-            const deltaTime = currentTime - lastTime;
+            // Screen Shake Logic (NEW)
+            let offsetX = 0;
+            let offsetY = 0;
+            if (shakeDuration > 0) {
+                offsetX = (Math.random() - 0.5) * SHAKE_INTENSITY * (shakeDuration / SHAKE_DURATION_FRAMES);
+                offsetY = (Math.random() - 0.5) * SHAKE_INTENSITY * (shakeDuration / SHAKE_DURATION_FRAMES);
+                shakeDuration--;
+            }
             
+            ctx.setTransform(1, 0, 0, 1, offsetX, offsetY); // Apply transformation for shake
+
             // Only update game state if not paused
             if (!isPaused) {
-                // 1. Update Player States (Dash cooldown/duration/stun/boost/goalie speed)
+                // 1. Update Player States (Dash cooldown/duration/stun/boost/shield)
                 updatePlayerState(player1);
                 updatePlayerState(player2);
 
@@ -855,8 +984,8 @@
                 // 5. Collision Checks
                 checkBallPlayerCollision(player1);
                 checkBallPlayerCollision(player2);
-                checkPlayerCollision(player1, player2); // Player vs Player stun check
-                checkPowerupCollection(player1); // Check for powerup collection
+                checkPlayerCollision(player1, player2); 
+                checkPowerupCollection(player1); 
                 checkPowerupCollection(player2);
 
                 // 6. Goal Check
@@ -865,6 +994,9 @@
 
             // 7. Draw Everything
             drawGame();
+
+            // Reset transformation matrix after drawing (crucial for normal rendering next frame)
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
 
             lastTime = currentTime;
 
